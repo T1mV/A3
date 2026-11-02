@@ -11,17 +11,37 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classifica
 import json
 import re
 
+from ollama import Client
+import os
+
 warnings.filterwarnings("ignore")
+
+# setting up the LLM client: google ai/gemini
+# before running: $env:OLLAMA_API_KEY="4321423956254d5385a2cc9e5372056c.z7e2Ba2_6LfrYrX3R3k8PxO2"
+client = Client(
+    host="https://ollama.com"
+    headers = {
+        "Authorization": f"Bearer {os.environ['OLLAMA_API_KEY']}"
+    }
+)
 
 def call_llm_fn(prompt: str) -> str:
     # Replace with your actual OpenAI/LLM client call.
     # Must return raw text from the model. This is just a placeholder (that allows you to run the code).
-    return """{
-  "routes": ["diabetes", "heart"],
-  "primary": "heart",
-  "confidence": {"diabetes": 0.35, "heart": 0.72, "breast_cancer": 0.05},
-  "notes": "Brief triage rationale."
-}"""
+    response = client.generate(
+        model="gpt-oss:20b",
+        prompt=prompt,
+        format="json"
+    )
+
+    return response.response
+
+#     return """{
+#   "routes": ["diabetes", "heart"],
+#   "primary": "heart",
+#   "confidence": {"diabetes": 0.35, "heart": 0.72, "breast_cancer": 0.05},
+#   "notes": "Brief triage rationale."
+# }"""
 
 
 def make_case_text(pid, d_row, b_row, h_row):
@@ -100,21 +120,38 @@ class LLMPlannerAgent(BaseAgent):
             return
 
         remaining = []
+        diseases = ["diabetes","breast_cancer","heart"]
+
         for case in self.model.case_queue:
             pid, payload = case  # payload is dict with data per domain + text
             prompt = payload["text"]
 
+
             # Call LLM and parse response
+            response = call_llm_fn(prompt) 
+            decision = self._extract_json(response)
+
+            routes = decision['routes']
+            primary_decision = decision["primary"]
 
             # store triage decision in model context
-            # self.model.triage_log.append({
-            #         "PatientID": pid,
-            #         "routes": routes,
-            #         "primary": primary_decision,
-            #         "labels": payload["labels"]
-            #     })
+            self.model.triage_log.append({
+                    "PatientID": pid,
+                    "routes": routes,
+                    "primary": primary_decision,
+                    "labels": payload["labels"],
+                    "triage": decision
+                })
 
             # Route to appropriate executors based on LLM decision
+            if routes:
+                for disease in routes:
+                    task_id = f"task_{disease}_{pid}"
+                    task = {"id": pid, "description": f"Analyze {disease} data", "data": payload["data"][disease], "y_true": int(payload["labels"][disease])}
+                    self.model.context[task_id] = task
+                    print(f"[{self.role}] Planned task {task_id}")
+            else:
+                remaining.append(case)
 
         self.model.case_queue = remaining
 
@@ -158,7 +195,6 @@ class ExecutorAgent(BaseAgent):
                 }
                 y_true = int(task.get("y_true", -1))
                 y_pred = int(self.clf.predict([task["data"]])[0])
-
                 self.model.results.append({
                     "PatientID": task["id"],
                     "Disease": self.disease,
