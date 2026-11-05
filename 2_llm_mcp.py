@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 # setting up the LLM client: google ai/gemini
 # before running: $env:OLLAMA_API_KEY="4321423956254d5385a2cc9e5372056c.z7e2Ba2_6LfrYrX3R3k8PxO2"
 client = Client(
-    host="https://ollama.com"
+    host="https://ollama.com",
     headers = {
         "Authorization": f"Bearer {os.environ['OLLAMA_API_KEY']}"
     }
@@ -128,11 +128,34 @@ class LLMPlannerAgent(BaseAgent):
 
 
             # Call LLM and parse response
-            response = call_llm_fn(prompt) 
-            decision = self._extract_json(response)
+            # incase of error, since agent can fuck up
+            try:
+                response = self.call_llm(prompt) 
+                decision = self._extract_json(response)
 
-            routes = decision['routes']
-            primary_decision = decision["primary"]
+                routes = decision['routes']
+                primary_decision = decision["primary"]
+
+                # senario where disease is not one of the ones were looking at:
+                if primary_decision not in diseases:
+                    raise ValueError("Invalid primary disease")
+
+                if not isinstance(routes, list): # needs to be a list for the reest of the code
+                    raise ValueError("Routes must be a list")
+
+                if not routes: # we need a route otherwise it doesnt really work
+                    raise ValueError("No routes selected")
+
+                if any(disease not in diseases for disease in routes): # all diseases in routes need to be diseases we look at
+                    raise ValueError("Invalid disease in routes")
+
+                if primary_decision not in routes: # the decision must be something that we look at
+                    raise ValueError("Primary disease must be in routes")
+
+            except (ValueError, KeyError, TypeError, ConnectionError) as e: # in case of error (some i could think of) raise this
+                print(f"Failed to triage patient {pid}: {e}")
+                remaining.append(case)
+                continue
 
             # store triage decision in model context
             self.model.triage_log.append({
@@ -147,7 +170,7 @@ class LLMPlannerAgent(BaseAgent):
             if routes:
                 for disease in routes:
                     task_id = f"task_{disease}_{pid}"
-                    task = {"id": pid, "description": f"Analyze {disease} data", "data": payload["data"][disease], "y_true": int(payload["labels"][disease])}
+                    task = {"id": pid, "description": f"Analyze {disease} data", "data": payload["data"][disease], "y_true": int(payload["labels"][disease]), "triage": decision}
                     self.model.context[task_id] = task
                     print(f"[{self.role}] Planned task {task_id}")
             else:
@@ -215,10 +238,19 @@ class MCPMesaModel:
         self.case_queue = []
         self.results = []
         self.triage_log = []
+        # added for making unique ids
+        used_ids = set()
 
         # Add cases to queue (patients)
-        for _ in range(100):
+        for _ in range(100): 
             pid = str(uuid.uuid4().int)[:4]
+
+            # ensure a unique used_id
+            while pid in used_ids:
+                pid = str(uuid.uuid4().int)[:4]
+
+            used_ids.add(pid)
+
             idx_d = X_d.sample(1).index[0]
             d_row = X_d.loc[idx_d].values
             y_d_true = int(y_d.loc[idx_d])
@@ -290,21 +322,46 @@ for step in range(3):
     print(f"\n========== MESA STEP {step + 1} ==========")
     model.step()
 
-# ==========================================
+# prints to check perfomance
+print("Predictions:", len(model.results))
+print("Triage decisions:", len(model.triage_log))
+print("Remaining cases:", len(model.case_queue))
+
+# saving the files for later use
+pd.DataFrame(model.results).to_pickle("results/predictions.pkl")
+pd.DataFrame(model.triage_log).to_pickle("results/triage.pkl")
+
+
+# # ==========================================
 # STEP 5: Visualize Results with Seaborn
 # ==========================================
-
+print("visualization")
 # TODO: implement the analysis and visualization of results yourself. Below is just a starting point.
 
-results_df = pd.DataFrame(model.results)
-print("Results Collected:", len(results_df))
-print(results_df.head())
+results_df = pd.read_pickle("results/predictions.pkl")
+triage_df = pd.read_pickle("results/triage.pkl")
+
+print(results_df.head(10))
+print(triage_df.head(10))
+
+expected = triage_df["routes"].apply(len).sum()
+actual = len(results_df)
+
+print("Expected:", expected)
+print("Actual:", actual)
+print("Missing:", expected - actual)
 
 
+# results_df = pd.DataFrame(model.results)
+# print("Results Collected:", len(results_df))
+# print(results_df.head())
 
 
-# Analyse the triage performance
+# # Analyse the triage performance
+# results_df = pd.read_pickle("results/predictions.pkl")
+# triage_df = pd.read_pickle("results/triage.pkl")
 
-triage_df = pd.DataFrame(model.triage_log)
-print("Triage Collected:", len(triage_df))
-print(triage_df.head())
+
+# triage_df = pd.DataFrame(model.triage_log)
+# print("Triage Collected:", len(triage_df))
+# print(triage_df.head())
