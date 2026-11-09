@@ -20,56 +20,8 @@ print(results_df.head())
 print("\nTriage results:")
 print(triage_df.head())
 
-
-
 # ==========================================
-# STEP 2: Visualize predictions by disease
-# ==========================================
-
-plt.figure(figsize=(10, 6))
-
-sns.countplot(data=results_df, x="Disease", hue="y_pred")
-
-plt.title("Predictions by Disease Type")
-
-plt.ylabel("Number of Cases")
-plt.xlabel("Disease")
-
-plt.legend(title="Prediction", labels=["Negative", "Positive"])
-plt.tight_layout()
-
-plt.savefig("results/predictions_by_disease.png")
-# plt.show()
-plt.close()
-
-
-# ==========================================
-# STEP 3: Confusion matrices
-# ==========================================
-
-for disease in results_df["Disease"].unique():
-
-    sub = results_df[results_df["Disease"] == disease].dropna(subset=["y_true", "y_pred"])
-    y_true = sub["y_true"].astype(int).values
-    y_pred = sub["y_pred"].astype(int).values
-
-    print(f"\n=== {disease} ===")
-    print(classification_report(y_true, y_pred, digits=3))
-
-    cm = confusion_matrix(y_true, y_pred)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-    disp.plot()
-
-    plt.title(f"Confusion Matrix: {disease}")
-    plt.tight_layout()
-    plt.savefig(f"results/llm_confusion_{disease}.png")
-    # plt.show()
-    plt.close()
-
-
-
-# ==========================================
-# STEP 4: Evaluate LLM triage performance
+# STEP 2: Evaluate LLM triage performance
 # ==========================================
 
 print("\n========== LLM TRIAGE PERFORMANCE ==========")

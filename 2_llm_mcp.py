@@ -17,7 +17,7 @@ import os
 warnings.filterwarnings("ignore")
 
 # setting up the LLM client: google ai/gemini
-# before running: $env:OLLAMA_API_KEY="4321423956254d5385a2cc9e5372056c.z7e2Ba2_6LfrYrX3R3k8PxO2"
+# before running setup the api key
 client = Client(
     host="https://ollama.com",
     headers = {
@@ -173,8 +173,6 @@ class LLMPlannerAgent(BaseAgent):
                     task = {"id": pid, "description": f"Analyze {disease} data", "data": payload["data"][disease], "y_true": int(payload["labels"][disease]), "triage": decision}
                     self.model.context[task_id] = task
                     print(f"[{self.role}] Planned task {task_id}")
-            else:
-                remaining.append(case)
 
         self.model.case_queue = remaining
 
@@ -328,40 +326,13 @@ print("Triage decisions:", len(model.triage_log))
 print("Remaining cases:", len(model.case_queue))
 
 # saving the files for later use
+os.makedirs("results", exist_ok=True)
 pd.DataFrame(model.results).to_pickle("results/predictions.pkl")
 pd.DataFrame(model.triage_log).to_pickle("results/triage.pkl")
-
+print("both dataframes are saved as a .pki in results")
 
 # # ==========================================
 # STEP 5: Visualize Results with Seaborn
 # ==========================================
-print("visualization")
-# TODO: implement the analysis and visualization of results yourself. Below is just a starting point.
-
-results_df = pd.read_pickle("results/predictions.pkl")
-triage_df = pd.read_pickle("results/triage.pkl")
-
-print(results_df.head(10))
-print(triage_df.head(10))
-
-expected = triage_df["routes"].apply(len).sum()
-actual = len(results_df)
-
-print("Expected:", expected)
-print("Actual:", actual)
-print("Missing:", expected - actual)
-
-
-# results_df = pd.DataFrame(model.results)
-# print("Results Collected:", len(results_df))
-# print(results_df.head())
-
-
-# # Analyse the triage performance
-# results_df = pd.read_pickle("results/predictions.pkl")
-# triage_df = pd.read_pickle("results/triage.pkl")
-
-
-# triage_df = pd.DataFrame(model.triage_log)
-# print("Triage Collected:", len(triage_df))
-# print(triage_df.head())
+# TODO: implement the analysis and visualization of results yourself. Below is just a starting point.\
+print("run the file 3_analyse_result.py to visualize the results")
